@@ -1,0 +1,2 @@
+parent can accsee fd: 1
+child can access fd: 1
