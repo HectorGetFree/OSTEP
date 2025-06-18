@@ -177,3 +177,60 @@ Stats: IO Busy 11 (64.71%)
 在原有结论的基础上，可以发现``IO_RUN_IMMEDIATE -S SWITCH_ON_IO``
 
 是很优秀的策略
+
+## Chapter05 hw
+
+**文件描述符**
+
+```C
+close(STDOUT_FILENO);
+int fd = open("./q2.txt", O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU);
+```
+
+先关标准输出会使得文件描述符1空出来给open的文件，从而使得重定向是ok的，而先open再close会导致重定向不ok且看不到输出
+
+**exec()系列函数变体存在的意义**
+
+`execl()、execle()、execlp()、execv()、execvp()和execvP()`
+
+参数传递方式
+
+`l:以列表形式传递`
+
+`v:以参数数组传递`
+
+可执行文件查找方式
+
+`无p:不查找PATH，需要提供完整路径`
+
+`p:会查找PATH，不需要提供完整路径`
+
+是否需要设置环境变量
+
+`无e:默认行为`
+
+`有e:自己设置环境变量`
+
+**子进程中调用wait()的返回值**
+
+首先在父进程中尝试
+
+```
+father wc = 95672
+```
+
+然后在子进程中wait()
+
+```
+child wc = -1
+```
+
+- rc == 0 时，是**子进程**。
+- 子进程自己**没有调用过 fork()**，也就是说它**没有任何子进程**。
+
+- 所以子进程调用 wait() 的时候，**找不到子进程可等**，于是：
+
+  - wait() 返回 -1
+  - errno 被设置为 ECHILD（即：No child processes）
+
+  
