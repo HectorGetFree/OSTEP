@@ -233,4 +233,13 @@ child wc = -1
   - wait() 返回 -1
   - errno 被设置为 ECHILD（即：No child processes）
 
-  
+
+**重定向**
+
+`dup2(oldfd, newfd);`
+
+> 把 oldfd 的**文件描述符所指的对象**复制一份到 newfd 上，并**关闭原来的 newfd**（如果已打开）。
+
+- **文件描述符（fd）只是内核中 open file table 的一个索引**。
+- dup2() 会让两个 fd 指向同一个内核对象（比如 pipe、文件等）；
+- 但它们的 **fd 编号独立、互不依赖**。
