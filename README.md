@@ -416,3 +416,48 @@ MLFQ的基本规则
 `calloc()` 分配内存并初始化为0
 
 `realloc()` 重新分配内存大小
+
+### HW
+
+**gcc使用说明**
+
+| 选项        | 作用说明                               |
+| ----------- | -------------------------------------- |
+| -o filename | 指定输出文件名                         |
+| -c          | 编译为目标文件（.o），不链接           |
+| -Wall       | 打开所有常见警告                       |
+| -Werror     | 将所有警告当作错误                     |
+| -g          | 生成调试信息（可用 gdb 调试）          |
+| -O2、-O3    | 启用优化级别（越大越快，但编译更复杂） |
+| -std=c99    | 指定使用 C99 标准编译                  |
+| -lm         | 链接数学库（例如使用 sin、pow 等函数） |
+
+**valgrind使用说明**
+
+| 命令行参数            | 含义                                      |
+| --------------------- | ----------------------------------------- |
+| --leak-check=full     | 检查所有内存泄漏（强烈推荐）              |
+| --show-leak-kinds=all | 显示各种类型泄漏（definitely / possibly） |
+| --track-origins=yes   | 追踪未初始化变量的来源（更慢但更准确）    |
+| -v                    | 输出更详细信息                            |
+
+*输出解析*
+
+```bash
+==7327== Invalid read of size 4 # 非法读取4字节
+==7327==    at 0x109168: main (null.c:11).  # 问题在程序的第11行
+==7327==  Address 0x0 is not stack'd, malloc'd or (recently) free'd # 访问了地址0x0，也就是NULL
+```
+
+```bash
+==8916==  Invalid write of size 4 # 非法写入
+==8916==    at 0x10918D: main (q5.c:13)
+==8916==  Address 0x4a771d0 is 0 bytes after a block of size 400 alloc'd # 这里说明的是数组越界写入 -- 关键词是after
+```
+
+```bash
+==9133== Invalid read of size 4
+==9133==    at 0x1091F8: main (q6.c:17)
+==9133==  Address 0x4a77040 is 0 bytes inside a block of size 40 free'd // 指出问题：访问已经被free的内存
+```
+
