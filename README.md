@@ -461,3 +461,205 @@ MLFQ的基本规则
 ==9133==  Address 0x4a77040 is 0 bytes inside a block of size 40 free'd // 指出问题：访问已经被free的内存
 ```
 
+## Chapter 15 机制：地址转换
+
+受限直接访问 LDE Limited Direct Exection
+
+LDE背后的想法很简单：让程序运行的大部分指令直接访问硬件，只在一些关键点（如进程发起系统调用或发生时钟中断）由操作系统介入来确保“在正确的时间，正确的地点，做正确的事”
+
+**地址转换** ：每个CPU需要两个寄存器，**基址寄存器 和 界限寄存器**
+
+### HW
+
+`cd OSTEP/homework/vm-mechanism`
+
+```bash
+Usage: relocation.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -s SEED, --seed=SEED  the random seed
+  -a ASIZE, --asize=ASIZE
+                        address space size (e.g., 16, 64k, 32m, 1g)
+  -p PSIZE, --physmem=PSIZE
+                        physical memory size (e.g., 16, 64k, 32m, 1g)
+  -n NUM, --addresses=NUM
+                        number of virtual addresses to generate
+  -b BASE, --b=BASE     value of base register
+  -l LIMIT, --l=LIMIT   value of limit register
+  -c, --compute         compute answers for me
+```
+
+虚拟地址从零开始计算，所以界限寄存器最起码是最大的虚拟地址+1
+
+## Chapter 16 分段
+
+地址空间中有三个逻辑不同的段：代码，栈和堆
+
+分段的做法是：虚拟地址的前2位标识段寄存器，后面的位用作段内偏移
+
+说白了就是不同进程的相同段都放在一起，段与段之间是分开的，每个段都维护有基址寄存器和界限寄存器
+
+**反向偏移量计算**：用偏移量减去每个段的最大偏移（比如说二进制地址标识偏移的位数为6位，那么最大偏移就是2^6^），然后将计算结果加到基址上得到物理地址
+
+- 效果跟虚拟地址的10进制大小减去虚拟空间总大小然后加上物理基址是一样的
+
+### HW
+
+`cd OSTEP/homework/vm-segmentation`
+
+```bash
+Usage: segmentation.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -s SEED, --seed=SEED  the random seed
+  -A ADDRESSES, --addresses=ADDRESSES
+                        a set of comma-separated pages to access; -1 means
+                        randomly generate
+  -a ASIZE, --asize=ASIZE
+                        address space size (e.g., 16, 64k, 32m, 1g)
+  -p PSIZE, --physmem=PSIZE
+                        physical memory size (e.g., 16, 64k, 32m, 1g)
+  -n NUM, --numaddrs=NUM
+                        number of virtual addresses to generate
+  -b BASE0, --b0=BASE0  value of segment 0 base register
+  -l LEN0, --l0=LEN0    value of segment 0 limit register
+  -B BASE1, --b1=BASE1  value of segment 1 base register
+  -L LEN1, --l1=LEN1    value of segment 1 limit register
+  -c                    compute answers for me
+```
+
+```bash
+ARG seed 0
+ARG address space size 128
+ARG phys mem size 512
+
+Segment register information:
+
+  Segment 0 base  (grows positive) : 0x00000000 (decimal 0)
+  Segment 0 limit                  : 20
+
+  Segment 1 base  (grows negative) : 0x00000200 (decimal 512)
+  Segment 1 limit                  : 20
+
+Virtual Address Trace
+  VA  0: 0x0000006c (decimal:  108) --> VALID in SEG1: 0x000001ec (decimal:  492)
+  VA  1: 0x00000061 (decimal:   97) --> SEGMENTATION VIOLATION (SEG1)
+  VA  2: 0x00000035 (decimal:   53) --> SEGMENTATION VIOLATION (SEG0)
+  VA  3: 0x00000021 (decimal:   33) --> SEGMENTATION VIOLATION (SEG0)
+  VA  4: 0x00000041 (decimal:   65) --> SEGMENTATION VIOLATION (SEG1)
+```
+
+注意第一个转换`0x0000006c (decimal:  108)`，转化为2进制，他的首位是1，标识位SEG1，说明是反向增长，然后用上面介绍的计算方法得到物理地址
+
+## Chapter 17 空闲空间管理
+
+关键词：
+
+**空闲列表** 
+
+**分割与合并**
+
+保证外部碎片最小化的策略：
+
+- 最优匹配：遍历空间列表，找到最合适的空闲块
+- 最差匹配：遍历，找到最大的空闲块
+- 首次匹配：找到第一个足够大的块
+- 下次匹配：从上一次查找结束的地方开始接着找
+
+其他方式：
+
+- 分离空闲列表
+- 二分伙伴系统
+
+### HW
+
+`cd OSTEP/homework/vm-freespace`
+
+```bash
+Usage: malloc.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -s SEED, --seed=SEED  the random seed
+  -S HEAPSIZE, --size=HEAPSIZE
+                        size of the heap
+  -b BASEADDR, --baseAddr=BASEADDR
+                        base address of heap
+  -H HEADERSIZE, --headerSize=HEADERSIZE
+                        size of the header
+  -a ALIGNMENT, --alignment=ALIGNMENT
+                        align allocated units to size; -1->no align
+  -p POLICY, --policy=POLICY
+                        list search (BEST, WORST, FIRST)
+  -l ORDER, --listOrder=ORDER
+                        list order (ADDRSORT, SIZESORT+, SIZESORT-, INSERT-
+                        FRONT, INSERT-BACK)
+  -C, --coalesce        coalesce the free list?
+  -n OPSNUM, --numOps=OPSNUM
+                        number of random ops to generate
+  -r OPSRANGE, --range=OPSRANGE
+                        max alloc size
+  -P OPSPALLOC, --percentAlloc=OPSPALLOC
+                        percent of ops that are allocs
+  -A OPSLIST, --allocList=OPSLIST
+                        instead of random, list of ops (+10,-0,etc)
+  -c, --compute         compute answers for me
+```
+
+策略与空闲列表排序之间的相互影响 -- 摘自微信读书用户评论
+
+比如：
+
+- 【-p BEST】配合【-l SIZESORT+】，能提升效率；
+- 【-p WORST】配合【-l SIZESORT-】，能提升效率；
+- 【-p FIRST】配合【-l SIZESORT+/-】，就等效于【-p BEST/WORST】
+- 【-l ADDRSORT】对【合并】free list，有积极作用。
+
+## Chapter 18 分页：介绍
+
+**分页** 
+
+- 不是将一个进程的地址空间分割成几个不同长度的逻辑段（即代码、堆、段），而是分割成固定大小的单元，每个单元称为一页
+
+- 相应地将物理内存的页概念叫做 **页帧**
+
+**页表**
+
+- 操作系统为每个进程保存一个 **存储虚拟地址和物理地址转换的** ==页表==；*说白了就是一组虚拟地址到物理地址的映射*
+
+- 存储在内存
+- 页表基址寄存器 -- 包含页表起始位置的物理地址
+- **页表条目 PTE**
+  - 有效位 **valid bit** 表示特定的地址转换是否有效
+  - 保护位 **protection bit** 表明页是否可以读取、写入或执行
+  - 存在位 **present bit** 表明该页实在物理内存还是磁盘
+  - 脏位 **dirty bit** 表明页在被带入内存后是否被修改过
+  - 参考位 **reference bit** 用于追踪页面是否被访问，在页面替换时要进行考虑
+
+此时的虚拟地址包括两部分：**虚拟页面号VPN** + **页内偏移量offset**
+
+- 例如：虚拟地址21 对应 0x010101假设前两位是VPN，那么要找的就是*在虚拟页“01”（或1）的第5个（“0101”）字节处*
+
+- **物理页面号** 叫 **PFN 或者 PPN**
+
+**翻译规则：**由 **VPN** 通过 **页表** 得到 **PFN**，但是offset不变，组合得到物理地址
+
+### HW
+
+
+
+## Chapter 20 分页：较小的页
+
+**页表：** 负责将虚拟地址映射到物理地址
+
+**页表条目：**不仅记录映射还包含有状态位
+
+**TLB: **存储了最近使用的页表项（也就是页表条目）
+
+TLB 表项（每一项）：
+┌───────────────┬──────────────┬───────┬──────┬────
+│ 虚拟页号 (VPN)			      │ 物理页号 (PFN)			  │ 有效位   	  │ 权限 	    │其他信息
+└───────────────┴──────────────┴───────┴──────┴────
+
