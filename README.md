@@ -630,8 +630,15 @@ Options:
 - 操作系统为每个进程保存一个 **存储虚拟地址和物理地址转换的** ==页表==；*说白了就是一组虚拟地址到物理地址的映射*
 
 - 存储在内存
+
 - 页表基址寄存器 -- 包含页表起始位置的物理地址
+
 - **页表条目 PTE**
+
+  内容
+
+  - 物理页帧号 **PFN**
+
   - 有效位 **valid bit** 表示特定的地址转换是否有效
   - 保护位 **protection bit** 表明页是否可以读取、写入或执行
   - 存在位 **present bit** 表明该页实在物理内存还是磁盘
@@ -644,22 +651,162 @@ Options:
 
 - **物理页面号** 叫 **PFN 或者 PPN**
 
-**翻译规则：**由 **VPN** 通过 **页表** 得到 **PFN**，但是offset不变，组合得到物理地址
+**翻译规则：以VPN作为索引访问页表的第VPN项得到对应的PFN，然后物理地址等于PFN跟offset的拼接
 
 ### HW
 
+`cd OSTEP/homwork/vm-paging`
 
+```bash
+Usage: paging-linear-translate.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -A ADDRESSES, --addresses=ADDRESSES
+                        a set of comma-separated pages to access; -1 means
+                        randomly generate
+  -s SEED, --seed=SEED  the random seed
+  -a ASIZE, --asize=ASIZE
+                        address space size (e.g., 16, 64k, 32m, 1g)
+  -p PSIZE, --physmem=PSIZE
+                        physical memory size (e.g., 16, 64k, 32m, 1g)
+  -P PAGESIZE, --pagesize=PAGESIZE
+                        page size (e.g., 4k, 8k, whatever)
+  -n NUM, --numaddrs=NUM
+                        number of virtual addresses to generate
+  -u USED, --used=USED  percent of virtual address space that is used
+  -v                    verbose mode
+  -c                    compute answers for me
+```
+
+线性页表大小随着地址空间的增大而增大
+
+线性页面大小随着页大小的增长而减小
+
+## Chapter 19 分页：快速地址转换 TLB
+
+TLB **T**ranslation-**l**ookaside **B**uffer -- 地址转换缓存
+
+- 缓存了最近使用过的 **VPN -> PFN转换**
+
+- 谁来处理 **TLB未命中**
+
+  - 一种方式是硬件（通常为CISC采取的策略）
+
+    需要知道页表在内存中的位置（通过页表基址寄存器）
+
+    然后遍历找表项即可
+
+  - 另一种是软件来处理（通常为RISC采取的策略）
+
+    发生TLB未命中时，硬件系统抛出一个异常，这会暂停当前的指令流，将特权级别提升至内核模式，跳转到陷阱处理程序
+
+    然后处理未命中，完毕后回到导致陷阱的指令
+
+- TLB的内容
+
+  - 典型的TLB是全关联的
+
+  - 一条TLB的内容可能如下
+
+    VPN ｜ PFN ｜ 其他位
+
+- 上下文切换时对TLB的处理
+
+  目的是为了隔离不同进程之间的数据
+
+  - 一种方式是：简单的清零 -- 将TLB的全部有效位置0，标记为无效
+
+    开销大
+
+  - 减小开销的方式是：在每条TLB内容中加上 **地址空间标识符 ASID ** 
+
+    用来区别不同进程的数据，从而实现TLB在进程之间的共享
+
+-  替换策略
+  - LRU
+  - 随机
 
 ## Chapter 20 分页：较小的页
 
-**页表：** 负责将虚拟地址映射到物理地址
+页表太大会占用大量物理内存
 
-**页表条目：**不仅记录映射还包含有状态位
+**如何让页表更小**？
 
-**TLB: **存储了最近使用的页表项（也就是页表条目）
+- **更大的页** 
 
-TLB 表项（每一项）：
-┌───────────────┬──────────────┬───────┬──────┬────
-│ 虚拟页号 (VPN)			      │ 物理页号 (PFN)			  │ 有效位   	  │ 权限 	    │其他信息
-└───────────────┴──────────────┴───────┴──────┴────
+  - 缺点
+
+    大内存页会导致没页内内存的浪费，产生大量内部碎片
+
+- **混合方法：分页+分段**
+
+  为每个逻辑分段提供一个页表
+
+  - 在这里依然使用 **基址寄存器** 和 **界限寄存器** （在MMU内存管理单元中）
+
+    基址寄存器保存该段的页表的物理地址
+
+    界限寄存器用于指示页表的结尾
+
+  - 虚拟地址的结构是
+
+    ｜ 前两位 -> 标识逻辑段 ｜ VPN ｜ Offset ｜
+
+- **多级页表**
+
+  - 使用页目录
+
+    每个页目录条目 **PDE** 指向一个页表
+
+    其结构至少是：
+
+    ｜ 有效位 ｜ PFN ｜
+
+    这里的PFN指向的是该==页表所在的物理页帧==
+
+    注意区别PTE中的PFN，他指向的是==实际映射物理页帧==
+
+    - 有效位为0: 如果整页的PTE无效，就完全不分配该页的页表，从而达到节省内存的目的
+    - 有效位为1:说明该页表存有数据
+
+    - ###### 因此多级页表分配的页表空间跟你正在使用的地址空间内存量成正比
+
+    - 此时的虚拟地址为（如果是两级页表）
+
+      |                                VPN                               |                  offset                  |
+
+      |           页目录索引        ｜       页表索引     ｜                 offset                  ｜
+
+- **反向页表**
+
+  每个页表项对应的是系统的每个 **物理页** ，记录的信息是
+
+  - 该物理页被哪个进程引用
+  - 以及该进程的哪个虚拟页映射到这个物理页
+
+  因为它是以物理页来组织的，之前页表是通过虚拟页来组织映射的，所以才叫反向页表
+
+### HW
+
+`cd OSTEP/homework/vm-smalltables`
+
+```bash
+Usage: paging-multilevel-translate.py [options]
+
+Options:
+  -h, --help            show this help message and exit
+  -s SEED, --seed=SEED  the random seed
+  -a ALLOCATED, --allocated=ALLOCATED
+                        number of virtual pages allocated
+  -n NUM, --addresses=NUM
+                        number of virtual addresses to generate
+  -c, --solve           compute answers for me
+```
+
+
+
+如果在多级页表中发生了TLB未命中，我们只需要一个 定位第一级别页表或者页目录的 **基址寄存器**
+
+因为剩余的位置信息我们都可以通过索引计算得到
 
